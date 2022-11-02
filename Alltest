@@ -1,0 +1,107 @@
+#!/usr/bin/bash
+
+# ShellChecked on every push - Always ShellCheck your scripts!
+
+# First some configs
+# Assumes it's running from the root dir. of the repository 
+if [ -z "${FOAM_LIBBIN}" ]; then
+    echo "Please source an OpenFOAM version. Aborting..."
+    exit 1
+fi
+
+set -e
+root=$PWD
+
+# If there is no lib${libName}.so, create a dummy one
+dummyLibChecks="Pstream dynamicFvMesh"
+for dummy in $dummyLibChecks; do
+    if [ ! -f "${FOAM_LIBBIN}/lib${dummy}.so" ] && [ ! -f "${FOAM_USER_LIBBIN}/lib${dummy}.so" ]; then
+        echo '!<arch>' > "${FOAM_USER_LIBBIN}/lib${dummy}.so"
+    fi
+done
+
+# libraries to test
+libs=$(find tests/ -maxdepth 1 -mindepth 1 -type d)
+# where to run OpenFOAM cases
+caseRun=/dev/shm
+# a timeout to prevent hanging processes (be CI friendly)
+timeOut="${CATCH_TIMEOUT:-15}"
+
+# Compile catch
+echo "Compiling Catch2 v3..."
+if [ ! -f "$FOAM_USER_LIBBIN/catch2/lib/libCatch2.a" ]; then
+    cd catch2
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX="$FOAM_USER_LIBBIN"/catch2 .. > log.cmake 2>&1
+    make -j"$(nproc)" > log.makeBuild 2>&1
+    make install > log.makeInstall 2>&1
+    cd - > /dev/null
+    rm -rf build
+    cd ..
+fi
+
+# 1st: compile tests
+for lib in $libs; do
+    cd "$lib"
+    echo "Compiling $lib test driver..."
+    if ! wmake > log.wmake 2>&1; then
+        echo "Errors compiling $lib test driver, see $PWD/log.wmake for more information"
+        exit 1
+    else
+        echo "Test driver for $lib has been compiled."
+    fi
+    cd - > /dev/null
+done
+
+# go back to the root of the repository
+cd "$root"
+
+# get setup to run tests
+cases=$(find cases/ -maxdepth 1 -mindepth 1 -type d)
+if [ -z "$cases" ]; then
+    echo "No cases found to run tests"
+    exit 1
+fi
+mkdir -p "$root"/reports
+
+# run the tests, but do not exit until attempting everything
+set +e
+err=0
+for ofCase in $cases; do
+    caseName=$(basename "$ofCase")
+    casePath=$caseRun/$caseName
+    cp -r "$ofCase" "$caseRun"
+    decomposePar -force -case "$casePath" > log.decomposePar
+    err=$((err + $?))
+    for lib in $libs; do
+        printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "$caseName"
+        timeout "$timeOut" "$root"/"$lib"/testDriver "$@" "[serial][$caseName]" --- -case "$casePath"
+        err=$((err + $?))
+    done
+    # run the case in parallel mode
+    nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "$casePath"/system/decomposeParDict)
+    for lib in $libs; do
+        printf "\n\nRunning tests for lib %s, on %s case in parallel...\n" "$lib" "$caseName"
+        timeout "$timeOut" mpirun -output-filename log."$lib.$caseName" -np "$nProcs" "$root"/"$lib"/testDriver \
+            "$@" --rng-seed time "[parallel][$caseName]" --- -parallel -case "$casePath" > /dev/null
+        lerr=$?
+        if [  $lerr -gt 0  ];  then
+            cat log."$lib.$caseName"/*/rank.*/stdout
+        else
+            cat log."$lib.$caseName"/1/rank.0/stdout
+        fi
+        err=$((err + lerr))
+    done
+    rm -rf "$casePath"
+done
+
+# Cleanup
+for dummy in $dummyLibChecks; do
+    if [ -f "${FOAM_USER_LIBBIN}/lib${dummy}.so" ] && 
+        tr '\n' ' ' < "${FOAM_USER_LIBBIN}/lib${dummy}.so" | grep -q '^!<arch> $'; then
+        rm -rf "${FOAM_USER_LIBBIN}/lib${dummy}.so"
+    fi
+done
+
+exit $err
