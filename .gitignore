@@ -95,3 +95,7 @@ doc/Doxygen/DTAGS
 
 # Ignore reports
 reports/tests/*
+log.*
+
+# Binary files
+/tests/exampleTests/testDriver
