@@ -1,0 +1,31 @@
+# This is a basic workflow to run tests in OpenFOAM 10 containers
+name: OF10
+
+# Make sure shells are interactive, so OF can get sourced
+defaults:
+  run:
+    shell: bash -o pipefail -i {0}
+
+# Controls when the workflow will run
+on:
+  push
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    container:
+      image: ghcr.io/foamscience/jammy-openfoam:10
+      options: --cpus 2 --user openfoam
+      env:
+        CATCH_TIMEOUT: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Compile and Test
+        run: |
+          source /opt/openfoam10/etc/bashrc
+          sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
+          ./Alltest
