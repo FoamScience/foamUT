@@ -92,3 +92,6 @@ doc/Doxygen/DTAGS
 
 # Ignore XML reports
 *.xml
+
+# Ignore reports
+reports/tests/*
