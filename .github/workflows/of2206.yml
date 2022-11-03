@@ -27,5 +27,6 @@ jobs:
       - name: Compile and Test
         run: |
           source /usr/lib/openfoam/openfoam2206/etc/bashrc
+          mkdir -p $FOAM_USER_LIBBIN
           sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
           ./Alltest

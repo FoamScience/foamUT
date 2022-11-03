@@ -9,6 +9,6 @@ EXE_INC = -std=c++14 \
 EXE_LIBS = \
     -lfiniteVolume \
     -lmeshTools \
-    -L$(FOAM_USER_LIBBIN) \
+    -L$(FOAM_USER_LIBBIN) -L$(FOAM_LIBBIN)/$(FOAM_MPI) \
     -L$(FOAM_USER_LIBBIN)/catch2/lib -l:libCatch2.a \
     -ldynamicFvMesh -lPstream

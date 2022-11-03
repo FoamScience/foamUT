@@ -1,5 +1,5 @@
 # This is a basic workflow to run tests in OpenFOAM 10 containers
-name: OF10
+name: OF9
 
 # Make sure shells are interactive, so OF can get sourced
 defaults:
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     container:
-      image: ghcr.io/foamscience/jammy-openfoam:10
+      image: ghcr.io/foamscience/jammy-openfoam:9
       options: --cpus 2 --user openfoam
       env:
         CATCH_TIMEOUT: 20
@@ -26,6 +26,7 @@ jobs:
 
       - name: Compile and Test
         run: |
-          source /opt/openfoam10/etc/bashrc
+          source /opt/openfoam9/etc/bashrc
+          mkdir -p $FOAM_USER_LIBBIN
           sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
           ./Alltest
