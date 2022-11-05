@@ -1,0 +1,125 @@
+#!/usr/bin/bash
+
+# ShellChecked on every push - Always ShellCheck your scripts!
+
+# Usage (filepath is relative to this script's directory):
+# ./Alltest.oneFile [filepath]
+
+# First some configs
+# Assumes it's running from the root dir. of the repository 
+if [ -z "${FOAM_LIBBIN}" ]; then
+    echo "Please source an OpenFOAM version. Aborting..."
+    exit 1
+fi
+
+if [ ! $# -eq 1 ]; then
+    echo "Please provide a relative path to a test .C file to run. Aborting..."
+    exit 1
+fi
+
+set +e
+root=$PWD
+##foamV=$(echo "${WM_PROJECT}$(test ! -z "${WM_FORK}" && echo '-'"${WM_FORK}")-${WM_PROJECT_VERSION}")
+
+# If an argument is passed in; execute tests on that file only
+fnameTag="[#$(basename "$1" '.C')]"
+addFnameTag="-#"
+
+# If there is no lib${libName}.so, create a dummy one
+dummyLibChecks="Pstream dynamicFvMesh"
+for dummy in $dummyLibChecks; do
+    if [ ! -f "${FOAM_LIBBIN}/lib${dummy}.so" ] && [ ! -f "${FOAM_USER_LIBBIN}/lib${dummy}.so" ]; then
+        echo '!<arch>' > "${FOAM_USER_LIBBIN}/lib${dummy}.so"
+    fi
+done
+
+# The library the file is supposed to be included in
+lib=$(grep -lr --include files --exclude-dir=linux\* "$(basename "$1")")
+lib=$(dirname "$lib")
+lib=$(dirname "$lib")
+report="${root}/reports/$(basename "$lib").xml"
+# where to run OpenFOAM cases
+caseRun=/dev/shm
+# a timeout to prevent hanging processes (be CI friendly)
+timeOut="${CATCH_TIMEOUT:-15}"
+
+# Compile catch
+echo "Compiling Catch2 v3..."
+if [ ! -f "$FOAM_USER_LIBBIN/catch2/lib/libCatch2.a" ]; then
+    cd catch2
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX="$FOAM_USER_LIBBIN"/catch2 .. > log.cmake 2>&1
+    make -j"$(nproc)" > log.makeBuild 2>&1
+    make install > log.makeInstall 2>&1
+    cd - > /dev/null
+    rm -rf build
+    cd ..
+fi
+
+# 1st: compile tests
+cd "$lib"
+echo "Compiling $lib test driver..."
+if ! wmake > log.wmake 2>&1; then
+    echo "Errors compiling $lib test driver, see $PWD/log.wmake for more information"
+    exit 1
+else
+    echo "Test driver for $lib has been compiled."
+fi
+cd - > /dev/null
+
+# go back to the root of the repository
+cd "$root"
+
+# get setup to run tests
+cases=$(find cases/ -maxdepth 1 -mindepth 1 -type d)
+if [ -z "$cases" ]; then
+    echo "No cases found to run tests"
+    exit 1
+fi
+mkdir -p "$root"/reports
+
+# run the tests
+for ofCase in $cases; do
+    caseName=$(basename "$ofCase")
+    casePath=$caseRun/$caseName
+    cp -r "$ofCase" "$caseRun"
+    decomposePar -force -case "$casePath" > log.decomposePar
+    err=$((err + $?))
+    printf "Running tests for lib %s, on %s case in serial ...\n" "$lib" "$caseName"
+    mkdir -p "$(dirname reports/"$lib")"
+    timeout "$timeOut" "$root"/"$lib"/testDriver "$addFnameTag" "[serial][$caseName]$fnameTag" \
+        -n "$(basename "$lib")" -s -r xml::out="${root}/reports/${lib}_${caseName}_serial.xml" \
+        -d yes --- -case "$casePath"
+    echo '<?xml version="1.0" encoding="UTF-8"?>' > "$report"
+    echo '<AllTestsForFile>' >> "$report"
+    sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${root}/reports/${lib}_${caseName}_serial.xml" \
+        | sed 's/<Catch2TestRun/<Catch2TestRun proc="-1"/g' >> "$report"
+    
+    # run the case in parallel mode
+    nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "$casePath"/system/decomposeParDict)
+    printf "Running tests for lib %s, on %s case in parallel...\n" "$lib" "$caseName"
+    mkdir -p "$(dirname reports/"$lib")"
+    logdir="reports/${lib}_${caseName}_parallel"
+    timeout "$timeOut" mpirun -output-filename "$logdir" \
+        -np "$nProcs" "$root"/"$lib"/testDriver -n "$(basename "$lib")" \
+        "$addFnameTag" --rng-seed time "[parallel][$caseName]$fnameTag" -s -r xml \
+        -d yes --- -parallel -case "$casePath" > /dev/null
+    for i in $(seq 0 $((nProcs-1))); do
+        sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
+        sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${logdir}"/1/rank."$i"/stdout \
+            | sed 's/<Catch2TestRun/<Catch2TestRun proc="'"$i"'"/g' >> "$report"
+    done
+    rm -rf "$casePath"
+done
+echo '</AllTestsForFile>' >> "$report"
+
+# Cleanup
+for dummy in $dummyLibChecks; do
+    if [ -f "${FOAM_USER_LIBBIN}/lib${dummy}.so" ] && 
+        tr '\n' ' ' < "${FOAM_USER_LIBBIN}/lib${dummy}.so" | grep -q '^!<arch> $'; then
+        rm -rf "${FOAM_USER_LIBBIN}/lib${dummy}.so"
+    fi
+done
+
+exit 0
