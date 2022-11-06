@@ -1,5 +1,8 @@
 # A unit/integration testing framework for OpenFOAM code
 
+> This offering is not approved or endorsed by OpenCFD Limited,
+> the producer of the OpenFOAM software and owner of the OPENFOAM® and OpenCFD® trade marks.
+
 This is a unit/integration testing framework to help test-proof new OpenFOAM code
 (might be too late for the OpenFOAM library itself). This repository will always work with the
 latest versions of the main three OpenFOAM forks: [ESI OpenCFD's](https://openfoam.com),
