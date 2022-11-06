@@ -2,8 +2,13 @@
 
 # ShellChecked on every push - Always ShellCheck your scripts!
 
-# Usage (filepath is relative to this script's directory):
+# Usage (filepath can be relative to this script's directory):
 # ./Alltest.oneFile [filepath]
+
+# and the file doesn't have to be mentioned in one of the Make/files - examples:
+# ./Alltest.oneFile mesh.C
+# ./Alltest.oneFile exampleTests/mesh.C
+# ./Alltest.oneFile tests/exampleTests/mesh.C
 
 # First some configs
 # Assumes it's running from the root dir. of the repository 
@@ -13,13 +18,12 @@ if [ -z "${FOAM_LIBBIN}" ]; then
 fi
 
 if [ ! $# -eq 1 ]; then
-    echo "Please provide a relative path to a test .C file to run. Aborting..."
+    echo "Please provide a path to a test .C file to run. Aborting..."
     exit 1
 fi
 
 set +e
 root=$PWD
-##foamV=$(echo "${WM_PROJECT}$(test ! -z "${WM_FORK}" && echo '-'"${WM_FORK}")-${WM_PROJECT_VERSION}")
 
 # If an argument is passed in; execute tests on that file only
 fnameTag="[#$(basename "$1" '.C')]"
@@ -34,9 +38,13 @@ for dummy in $dummyLibChecks; do
 done
 
 # The library the file is supposed to be included in
-lib=$(grep -lr --include files --exclude-dir=linux\* "$(basename "$1")")
+lib=$(find "$PWD" -type f -iwholename "*$1" | sed 's!'"$PWD"'/!!g')
+if [ -z "${lib}" ]; then
+    echo "$1 not found"
+    exit 1
+fi
 lib=$(dirname "$lib")
-lib=$(dirname "$lib")
+echo "lib: $lib"
 report="${root}/reports/$(basename "$lib").xml"
 # where to run OpenFOAM cases
 caseRun=/dev/shm
@@ -46,30 +54,37 @@ timeOut="${CATCH_TIMEOUT:-15}"
 # Compile catch
 echo "Compiling Catch2 v3..."
 if [ ! -f "$FOAM_USER_LIBBIN/catch2/lib/libCatch2.a" ]; then
-    cd catch2
+    cd catch2 || exit 1
     mkdir build
-    cd build
+    cd build || exit 1
     cmake -DCMAKE_INSTALL_PREFIX="$FOAM_USER_LIBBIN"/catch2 .. > log.cmake 2>&1
     make -j"$(nproc)" > log.makeBuild 2>&1
     make install > log.makeInstall 2>&1
-    cd - > /dev/null
+    cd - > /dev/null || exit 1
     rm -rf build
     cd ..
 fi
 
-# 1st: compile tests
-cd "$lib"
+# 1st: compile the test only
+cd "$lib" || exit 1
+pwd
+cp Make/files Make/files.backup
+sed -i -n '/testDriver/p; /EXE/a '"$(basename "$1")" Make/files
+wclean
 echo "Compiling $lib test driver..."
 if ! wmake > log.wmake 2>&1; then
+    mv Make/files.backup Make/files
     echo "Errors compiling $lib test driver, see $PWD/log.wmake for more information"
     exit 1
 else
+    cp Make/files.backup Make/files
     echo "Test driver for $lib has been compiled."
 fi
-cd - > /dev/null
+rm -rf Make/files.backup
+cd - > /dev/null || exit 1
 
 # go back to the root of the repository
-cd "$root"
+cd "$root" || exit 1
 
 # get setup to run tests
 cases=$(find cases/ -maxdepth 1 -mindepth 1 -type d)
@@ -113,6 +128,7 @@ for ofCase in $cases; do
     rm -rf "$casePath"
 done
 echo '</AllTestsForFile>' >> "$report"
+echo "Done writing consolidated XML report to $report"
 
 # Cleanup
 for dummy in $dummyLibChecks; do
