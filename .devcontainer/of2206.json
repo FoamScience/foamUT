@@ -1,0 +1,5 @@
+{
+  "image": "ghcr.io/foamscience/jammy-openfoam:v2206",
+  "features": {
+  }
+}
