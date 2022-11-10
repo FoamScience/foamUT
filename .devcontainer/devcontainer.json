@@ -1,5 +1,13 @@
 {
   "image": "ghcr.io/foamscience/jammy-openfoam:v2206",
-  "features": {
-  }
+  "settings": {
+      "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "extensions": [
+      "elwardi.foam-language-client",
+      "zhikui.vscode-openfoam",
+      "llvm-vs-code-extensions.vscode-clangd"
+  ],
+
+  "remoteUser": "openfoam"
 }
