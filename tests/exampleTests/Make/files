@@ -1,4 +1,4 @@
-../testDriver.C
+$(FOAM_FOAMUT)/tests/testDriver.C
 
 time.C
 fields.C

@@ -36,7 +36,8 @@ SCENARIO("Check field initialization methods", "[cavity][serial][parallel]") {
         );
 
         THEN("All internal field values are correctly initialized from NO_READ constructor") {
-            REQUIRE(fld.internalField() == scalarField(mesh.nCells(), zero.value()));
+            REQUIRE(fld.internalField() == scalarField(mesh.nCells(), 
+                Pstream::myProcNo() == 1 ? 1 : 0));
         }
 
         WHEN("Field values are changed") {

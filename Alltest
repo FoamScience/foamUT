@@ -11,6 +11,7 @@ fi
 
 set -e
 root=$PWD
+export FOAM_FOAMUT="$root"
 
 # If there is no lib${libName}.so, create a dummy one
 dummyLibChecks="Pstream dynamicFvMesh"
@@ -23,7 +24,7 @@ for dummy in $dummyLibChecks; do
 done
 
 # libraries to test
-libs=$(find tests/ -maxdepth 1 -mindepth 1 -type d)
+libs=$(find -L tests/ -maxdepth 1 -mindepth 1 -type d)
 # where to run OpenFOAM cases
 caseRun=/dev/shm
 # a timeout to prevent hanging processes (be CI friendly)
@@ -78,6 +79,7 @@ for ofCase in $cases; do
     err=$((err + $?))
     for lib in $libs; do
         printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "$caseName"
+        echo "$root/$lib/testDriver"
         timeout "$timeOut" "$root"/"$lib"/testDriver "$@" "[serial][$caseName]" --- -case "$casePath"
         err=$((err + $?))
     done
