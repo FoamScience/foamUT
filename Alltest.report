@@ -27,7 +27,7 @@ libs=$(find -L tests/ -maxdepth 1 -mindepth 1 -type d)
 # where to run OpenFOAM cases
 caseRun=/dev/shm
 # a timeout to prevent hanging processes (be CI friendly)
-timeOut="${CATCH_TIMEOUT:-300}"
+timeOut="${CATCH_TIMEOUT:-15}"
 
 # Compile catch
 echo "Compiling Catch2 v3..."
@@ -68,6 +68,8 @@ fi
 mkdir -p "$root"/reports
 
 # run the tests
+set +e
+err=0
 for ofCase in $cases; do
     caseName=$(basename "$ofCase")
     casePath=$caseRun/$caseName
