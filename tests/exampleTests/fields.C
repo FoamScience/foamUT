@@ -20,7 +20,7 @@ SCENARIO("Check field initialization methods", "[cavity][serial][parallel]") {
 
     GIVEN("A time object, a mesh, and an initialized field") {
 
-        dimensionedScalar zero("0", dimless, 0.0);
+        dimensionedScalar zero("0", dimless, Pstream::myProcNo());
         volScalarField fld
         (
             IOobject
@@ -36,14 +36,13 @@ SCENARIO("Check field initialization methods", "[cavity][serial][parallel]") {
         );
 
         THEN("All internal field values are correctly initialized from NO_READ constructor") {
-            REQUIRE(fld.internalField() == scalarField(mesh.nCells(), 
-                Pstream::myProcNo() == 1 ? 1 : 0));
+            REQUIRE(fld.internalField() == scalarField(mesh.nCells(), Pstream::myProcNo()));
         }
 
         WHEN("Field values are changed") {
-            fld += 1;
+            fld += 1.0;
             THEN("All internal field values must be updated") {
-                REQUIRE(fld.internalField() == scalarField(mesh.nCells(), 1));
+                REQUIRE(fld.internalField() == scalarField(mesh.nCells(), 1+Pstream::myProcNo()));
             }
         }
     }
