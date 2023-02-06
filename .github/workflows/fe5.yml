@@ -30,4 +30,5 @@ jobs:
           sudo chown openfoam: /home/openfoam
           mkdir -p $FOAM_USER_LIBBIN
           sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
+          export FOAM_FOAMUT=$PWD
           ./Alltest

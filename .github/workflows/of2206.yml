@@ -29,4 +29,5 @@ jobs:
           source /usr/lib/openfoam/openfoam2206/etc/bashrc
           mkdir -p $FOAM_USER_LIBBIN
           sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
+          export FOAM_FOAMUT=$PWD
           ./Alltest
