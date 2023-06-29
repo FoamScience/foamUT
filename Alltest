@@ -36,6 +36,7 @@ done
 set -e
 root=$PWD
 export FOAM_FOAMUT="$root"
+foamV=$(echo "${WM_PROJECT}$(test ! -z "${WM_FORK}" && echo '-'"${WM_FORK}")-${WM_PROJECT_VERSION}")
 
 # If there is no lib${libName}.so, create a dummy one
 dummyLibChecks="Pstream dynamicFvMesh"
@@ -65,11 +66,9 @@ serialTests() {
         case $doReport in
             (true) report="-s -r xml::out=${root}/reports/${libName}_${2}_serial.xml -d yes";;
         esac
-        set -x
         timeout "$timeOut" "$root"/"$lib"/testDriver --allow-running-no-tests $params "[serial][${2}]" \
             -n "$(basename "$lib")" $report \
             --- -case "${3}"
-        set +x
         locErr=$?
         err=$((err+locErr))
         case $doReport in
