@@ -6,8 +6,30 @@
 # Assumes it's running from the root dir. of the repository 
 if [ -z "${FOAM_LIBBIN}" ]; then
     echo "Please source an OpenFOAM version. Aborting..."
+    echo "USAGE: ./Alltest [--no-serial|--no-parallel]"
     exit 1
 fi
+
+doSerial=true
+doParallel=true
+doReport=false
+for i in "$@"; do
+    case $i in
+        --no-serial)
+            doSerial=false
+            ;;
+        --no-parallel)
+            doParallel=false
+            ;;
+        --report)
+            doReport=true
+            ;;
+        *)
+            ;;
+    esac
+done
+
+echo $doParallel
 
 set -e
 root=$PWD
@@ -30,6 +52,72 @@ caseRun=/dev/shm
 # a timeout to prevent hanging processes (be CI friendly)
 timeOut="${CATCH_TIMEOUT:-15}"
 
+serialTests() {
+    for lib in ${4}; do
+        printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "${2}"
+        echo "$root/$lib/testDriver"
+        params=$(echo "${@:5} " | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g')
+        echo "#$params#"
+        libName=$(basename "$lib")
+        consReport="${root}/reports/${libName}.xml"
+        report=""
+        case $doReport in
+            (true) report="-s -r xml::out=${root}/reports/${libName}_${2}_serial.xml -d yes";;
+        esac
+        timeout "$timeOut" "$root"/"$lib"/testDriver --allow-running-no-tests $params "[serial][${2}]" \
+            -n "$(basename "$lib")" $report \
+            --- -case "${3}"
+        locErr=$?
+        err=$((err+locErr))
+        case $doReport in
+            (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
+                "$root"/reports/"$libName"_"${2}"_serial.xml \
+                > "${root}/reports/${libName}_${2}_serial.html"
+            sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${root}/reports/${libName}_${caseName}_serial.xml" \
+                | sed 's/<Catch2TestRun/<Catch2TestRun proc="-1"/g' >> "$consReport";;
+        esac
+    done
+}
+
+parallelTests(){
+    decomposePar -force -case "${3}" > log.decomposePar
+    err=$((err + $?))
+    # run the case in parallel mode
+    nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
+    params=$(echo "${@:5}" | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g')
+    report=""
+    case $doReport in
+        (true) report="-s -r xml -d yes";;
+    esac
+    for lib in ${4}; do
+        printf "\n\nRunning tests for lib %s, on %s case in parallel...\n" "$lib" "${2}"
+        libName=$(basename "$lib")
+        consReport="${root}/reports/${libName}.xml"
+        logdir="reports/${libName}_${2}_parallel"
+        timeout "$timeOut" mpirun -output-filename "$logdir" -np "$nProcs" "$root"/"$lib"/testDriver \
+            --allow-running-no-tests \
+            -n "$(basename "$lib")" $report \
+            --rng-seed time $params "[parallel][${2}]" --- -parallel -case "${3}" > /dev/null
+        lerr=$?
+        if [  $lerr -gt 0  ];  then
+            cat log."$lib.${2}"/*/rank.*/stdout
+        else
+            cat log."$lib.${2}"/1/rank.0/stdout
+        fi
+        err=$((err + lerr))
+        case $doReport in
+            (true) for i in $(seq 0 $((nProcs-1))); do
+                sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
+                xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
+                    "${logdir}"/1/rank."$i"/stdout > "${logdir}_${i}.html"
+                sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
+                sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${logdir}"/1/rank."$i"/stdout \
+                    | sed 's/<Catch2TestRun/<Catch2TestRun proc="'"$i"'"/g' >> "$consReport"
+            done;;
+        esac
+    done
+}
+
 # Compile catch
 echo "Compiling Catch2 v3..."
 if [ ! -f "$FOAM_USER_LIBBIN/catch2/lib/libCatch2.a" ]; then
@@ -46,6 +134,12 @@ fi
 
 # 1st: compile tests
 for lib in $libs; do
+    consReport="${root}/reports/$(basename "$lib").xml"
+    case $doReport in
+        (true) echo '<?xml version="1.0" encoding="UTF-8"?>' > "$consReport"
+        echo '<AllTestsForFile>' >> "$consReport";;
+    esac
+
     cd "$lib"
     echo "Compiling $lib test driver..."
     if ! wmake > log.wmake 2>&1; then
@@ -75,31 +169,23 @@ for ofCase in $cases; do
     caseName=$(basename "$ofCase")
     casePath=$caseRun/$caseName
     cp -r "$ofCase" "$caseRun"
-    decomposePar -force -case "$casePath" > log.decomposePar
-    err=$((err + $?))
-    for lib in $libs; do
-        printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "$caseName"
-        echo "$root/$lib/testDriver"
-        timeout "$timeOut" "$root"/"$lib"/testDriver "$@" "[serial][$caseName]" --- -case "$casePath"
-        err=$((err + $?))
-    done
-    # run the case in parallel mode
-    nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "$casePath"/system/decomposeParDict)
-    for lib in $libs; do
-        printf "\n\nRunning tests for lib %s, on %s case in parallel...\n" "$lib" "$caseName"
-        timeout "$timeOut" mpirun -output-filename log."$lib.$caseName" -np "$nProcs" "$root"/"$lib"/testDriver \
-            "$@" --rng-seed time "[parallel][$caseName]" --- -parallel -case "$casePath" > /dev/null
-        lerr=$?
-        if [  $lerr -gt 0  ];  then
-            cat log."$lib.$caseName"/*/rank.*/stdout
-        else
-            cat log."$lib.$caseName"/1/rank.0/stdout
-        fi
-        err=$((err + lerr))
-    done
+    case $doSerial in
+        (true)    serialTests "$err" "$caseName" "$casePath" "$libs"  "$@";;
+    esac
+    case $doParallel in
+        (true)   parallelTests "$err" "$caseName" "$casePath" "$libs"  "$@";;
+    esac
     rm -rf "$casePath"
 done
 
+case $doReport in
+    (true) for lib in $libs; do
+        consReport="${root}/reports/$(basename "$lib").xml"
+        echo '</AllTestsForFile>' >> "$consReport"
+        echo "Done writing consolidated XML report to $consReport"
+    done;;
+esac
+    
 # Cleanup
 for dummy in $dummyLibChecks; do
     if [ -f "${FOAM_USER_LIBBIN}/lib${dummy}.so" ] && 
