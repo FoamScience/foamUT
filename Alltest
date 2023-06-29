@@ -6,13 +6,14 @@
 # Assumes it's running from the root dir. of the repository 
 if [ -z "${FOAM_LIBBIN}" ]; then
     echo "Please source an OpenFOAM version. Aborting..."
-    echo "USAGE: ./Alltest [--no-serial|--no-parallel]"
+    echo "USAGE: ./Alltest [--no-serial|--no-parallel] [--report] [--html]"
     exit 1
 fi
 
 doSerial=true
 doParallel=true
 doReport=false
+doHTML=false
 for i in "$@"; do
     case $i in
         --no-serial)
@@ -24,12 +25,13 @@ for i in "$@"; do
         --report)
             doReport=true
             ;;
+        --html)
+            doHTML=true
+            ;;
         *)
             ;;
     esac
 done
-
-echo $doParallel
 
 set -e
 root=$PWD
@@ -56,24 +58,27 @@ serialTests() {
     for lib in ${4}; do
         printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "${2}"
         echo "$root/$lib/testDriver"
-        params=$(echo "${@:5} " | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g')
-        echo "#$params#"
+        params=$(echo "${@:5} " | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g' -e 's/--html//g')
         libName=$(basename "$lib")
         consReport="${root}/reports/${libName}.xml"
         report=""
         case $doReport in
             (true) report="-s -r xml::out=${root}/reports/${libName}_${2}_serial.xml -d yes";;
         esac
+        set -x
         timeout "$timeOut" "$root"/"$lib"/testDriver --allow-running-no-tests $params "[serial][${2}]" \
             -n "$(basename "$lib")" $report \
             --- -case "${3}"
+        set +x
         locErr=$?
         err=$((err+locErr))
         case $doReport in
-            (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
+            (true) case $doHTML in
+                (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
                 "$root"/reports/"$libName"_"${2}"_serial.xml \
-                > "${root}/reports/${libName}_${2}_serial.html"
-            sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${root}/reports/${libName}_${caseName}_serial.xml" \
+                > "${root}/reports/${libName}_${2}_serial.html";;
+                esac
+                sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${root}/reports/${libName}_${caseName}_serial.xml" \
                 | sed 's/<Catch2TestRun/<Catch2TestRun proc="-1"/g' >> "$consReport";;
         esac
     done
@@ -84,7 +89,7 @@ parallelTests(){
     err=$((err + $?))
     # run the case in parallel mode
     nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
-    params=$(echo "${@:5}" | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g')
+    params=$(echo "${@:5} " | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g' -e 's/--html//g')
     report=""
     case $doReport in
         (true) report="-s -r xml -d yes";;
@@ -94,10 +99,14 @@ parallelTests(){
         libName=$(basename "$lib")
         consReport="${root}/reports/${libName}.xml"
         logdir="reports/${libName}_${2}_parallel"
-        timeout "$timeOut" mpirun -output-filename "$logdir" -np "$nProcs" "$root"/"$lib"/testDriver \
+        logparams=""
+        case $doReport in
+            (true) logparams="-output-filename $logdir"
+        esac
+        timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
             --allow-running-no-tests \
             -n "$(basename "$lib")" $report \
-            --rng-seed time $params "[parallel][${2}]" --- -parallel -case "${3}" > /dev/null
+            --rng-seed time $params "[parallel][${2}]" --- -parallel -case "${3}"
         lerr=$?
         if [  $lerr -gt 0  ];  then
             cat log."$lib.${2}"/*/rank.*/stdout
@@ -108,9 +117,10 @@ parallelTests(){
         case $doReport in
             (true) for i in $(seq 0 $((nProcs-1))); do
                 sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
-                xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
-                    "${logdir}"/1/rank."$i"/stdout > "${logdir}_${i}.html"
-                sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
+                case $doHTML in
+                    (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
+                    "${logdir}"/1/rank."$i"/stdout > "${logdir}_${i}.html";;
+                esac
                 sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${logdir}"/1/rank."$i"/stdout \
                     | sed 's/<Catch2TestRun/<Catch2TestRun proc="'"$i"'"/g' >> "$consReport"
             done;;
