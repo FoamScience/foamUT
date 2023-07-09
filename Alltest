@@ -84,7 +84,7 @@ serialTests() {
 }
 
 parallelTests(){
-    decomposePar -force -case "${3}" > log.decomposePar
+    decomposePar -force -case "${3}" > "${3}/log.decomposePar"
     err=$((err + $?))
     # run the case in parallel mode
     nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
@@ -99,26 +99,29 @@ parallelTests(){
         consReport="${root}/reports/${libName}.xml"
         logdir="reports/${libName}_${2}_parallel"
         logparams=""
+        direct=""
         case $doReport in
             (true) logparams="-output-filename $logdir"
+                direct="> /dev/null"
         esac
-        timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
+        eval timeout "$timeOut" mpirun $logparams -np "$nProcs" \
+            "$root"/"$lib"/testDriver \
             --allow-running-no-tests \
             -n "$(basename "$lib")" $report \
-            --rng-seed time $params "[parallel][${2}]" --- -parallel -case "${3}"
+            --rng-seed time $params "[parallel][${2}]" --- -parallel -case "${3}" $direct
         lerr=$?
-        if [  $lerr -gt 0  ];  then
-            cat log."$lib.${2}"/*/rank.*/stdout
-        else
-            cat log."$lib.${2}"/1/rank.0/stdout
-        fi
+        case $doReport in
+            (true) if [ $lerr -ne 0  ];  then
+                cat "${logdir}"/*/rank.*/stdout
+            fi
+        esac
         err=$((err + lerr))
         case $doReport in
             (true) for i in $(seq 0 $((nProcs-1))); do
                 sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
                 case $doHTML in
                     (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
-                    "${logdir}"/1/rank."$i"/stdout > "${logdir}_${i}.html";;
+                    "${logdir}"/1/rank."$i"/stdout > "${logdir}_${i}.html";
                 esac
                 sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${logdir}"/1/rank."$i"/stdout \
                     | sed 's/<Catch2TestRun/<Catch2TestRun proc="'"$i"'"/g' >> "$consReport"
