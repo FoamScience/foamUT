@@ -13,7 +13,6 @@ fi
 doSerial=true
 doParallel=true
 doReport=false
-doHTML=false
 for i in "$@"; do
     case $i in
         --no-serial)
@@ -25,9 +24,6 @@ for i in "$@"; do
         --report)
             doReport=true
             ;;
-        --html)
-            doHTML=true
-            ;;
         *)
             ;;
     esac
@@ -37,6 +33,7 @@ set -e
 root=$PWD
 export FOAM_FOAMUT="$root"
 foamV=$(echo "${WM_PROJECT}$(test ! -z "${WM_FORK}" && echo '-'"${WM_FORK}")-${WM_PROJECT_VERSION}")
+args_array=("$@")
 
 # If there is no lib${libName}.so, create a dummy one
 dummyLibChecks="Pstream dynamicFvMesh"
@@ -50,88 +47,110 @@ done
 
 # libraries to test
 libs=$(find -L tests/ -maxdepth 1 -mindepth 1 -type d)
+libs_array=($libs)
 # where to run OpenFOAM cases
-caseRun=/dev/shm
+caseRun=/tmp/foamUtCases
+mkdir -p "$caseRun"
 # a timeout to prevent hanging processes (be CI friendly)
 timeOut="${CATCH_TIMEOUT:-60}"
 
 serialTests() {
-    for lib in ${4}; do
-        printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "${2}"
-        echo "$root/$lib/testDriver"
-        params=$(echo "${@:5} " | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g' -e 's/--html//g')
+    local fargs=("$@")
+    local params=()
+    for ((i = 4; i <= $#; i++)); do
+        arg="${fargs[i]}"
+        case "$arg" in
+            --no-parallel|--no-serial|--report)
+            ;;
+            *)
+            params+=("$arg")
+            ;;
+        esac
+    done
+    for ((i = 0; i < ${#libs_array[@]}; i++)); do
+        lib="${libs_array[i]}"
+        printf "\n\nRunning tests for lib %s, on %s case in serial...\n" "$lib" "${2}" >&2
         libName=$(basename "$lib")
-        consReport="${root}/reports/${libName}.xml"
         report=""
         case $doReport in
-            (true) report="-s -r xml::out=${root}/reports/${libName}_${2}_serial.xml -d yes";;
+            (true) report="-s -r json::out=${root}/reports/${libName}_${2}_serial.json -d yes"
+            echo "Report: ${root}/reports/${libName}_${2}_serial.json" >&2
+            ;;
         esac
-        timeout "$timeOut" "$root"/"$lib"/testDriver --allow-running-no-tests $params "[serial][${2}]" \
-            -n "$(basename "$lib")" $report \
+        timeout "$timeOut" "$root"/"$lib"/testDriver --allow-running-no-tests \
+            -n "$(basename "$lib")" $report "[serial][${2}]" "${params[@]}" \
             --- -case "${3}"
         locErr=$?
         err=$((err+locErr))
-        case $doReport in
-            (true) case $doHTML in
-                (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
-                "$root"/reports/"$libName"_"${2}"_serial.xml \
-                > "${root}/reports/${libName}_${2}_serial.html";;
-                esac
-                sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${root}/reports/${libName}_${caseName}_serial.xml" \
-                | sed 's/<Catch2TestRun/<Catch2TestRun proc="-1"/g' >> "$consReport";;
-        esac
+        # separator in case json reporter is used
+        for element in "${params[@]}"; do
+            if [ "$element" == "json" ]; then
+                if ((i != ${#libs_array[@]})); then
+                    printf ","
+                fi
+            fi
+        done
     done
 }
 
 parallelTests(){
+    local fargs=("$@")
+    local params=()
+    for ((i = 4; i <= $#; i++)); do
+        arg="${fargs[i]}"
+        case "$arg" in
+            --no-parallel|--no-serial|--report)
+            ;;
+            *)
+            params+=("$arg")
+            ;;
+        esac
+    done
     decomposePar -force -case "${3}" > "${3}/log.decomposePar"
     err=$((err + $?))
     # run the case in parallel mode
     nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
-    params=$(echo "${@:5} " | sed -e 's/--no-parallel//g' -e 's/--no-serial//g' -e 's/--report//g' -e 's/--html//g')
     report=""
     case $doReport in
-        (true) report="-s -r xml -d yes";;
+        (true) report="-s -r json -d yes";;
     esac
-    for lib in ${4}; do
-        printf "\n\nRunning tests for lib %s, on %s case in parallel...\n" "$lib" "${2}"
+    for ((i = 0; i < ${#libs_array[@]}; i++)); do
+        lib="${libs_array[i]}"
+        printf "\n\nRunning tests for lib %s, on %s case in parallel...\n" "$lib" "${2}" >&2
         libName=$(basename "$lib")
-        consReport="${root}/reports/${libName}.xml"
         logdir="reports/${libName}_${2}_parallel"
         logparams=""
         direct=""
         case $doReport in
             (true) logparams="-output-filename $logdir"
                 direct="> /dev/null"
+                echo "Parallel Reports (${nProcs}): ${logdir}" >&2
         esac
-        eval timeout "$timeOut" mpirun $logparams -np "$nProcs" \
+        eval timeout "$timeOut" mpirun "$logparams" -np "$nProcs" \
             "$root"/"$lib"/testDriver \
             --allow-running-no-tests \
             -n "$(basename "$lib")" $report \
-            --rng-seed time $params "[parallel][${2}]" --- -parallel -case "${3}" $direct
+            --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
         lerr=$?
         case $doReport in
             (true) if [ $lerr -ne 0  ];  then
                 cat "${logdir}"/*/rank.*/stdout
             fi
         esac
+        # separator in case json reporter is used
+        for element in "${params[@]}"; do
+            if [ "$element" == "json" ]; then
+                if ((i != ${#libs_array[@]} - 1)); then
+                    printf ","
+                fi
+            fi
+        done
         err=$((err + lerr))
-        case $doReport in
-            (true) for i in $(seq 0 $((nProcs-1))); do
-                sed -i '/<\/Catch2TestRun>/q' "${logdir}"/1/rank."$i"/stdout
-                case $doHTML in
-                    (true) xsltproc --stringparam foamVersion "${foamV}" "$root"/style/catch2HTML.xslt \
-                    "${logdir}"/1/rank."$i"/stdout > "${logdir}_${i}.html";
-                esac
-                sed -n '/<Catch2TestRun/,/<\/Catch2TestRun>/{p;/<\/Catch2TestRun>/q}' "${logdir}"/1/rank."$i"/stdout \
-                    | sed 's/<Catch2TestRun/<Catch2TestRun proc="'"$i"'"/g' >> "$consReport"
-            done;;
-        esac
     done
 }
 
 # Compile catch
-echo "Compiling Catch2 v3..."
+echo "Compiling Catch2 v3..." >&2
 if [ ! -f "$FOAM_USER_LIBBIN/catch2/lib/libCatch2.a" ]; then
     cd catch2
     mkdir -p build
@@ -146,19 +165,13 @@ fi
 
 # 1st: compile tests
 for lib in $libs; do
-    consReport="${root}/reports/$(basename "$lib").xml"
-    case $doReport in
-        (true) echo '<?xml version="1.0" encoding="UTF-8"?>' > "$consReport"
-        echo '<AllTestsForFile>' >> "$consReport";;
-    esac
-
     cd "$lib"
-    echo "Compiling $lib test driver..."
+    echo "Compiling $lib test driver..." >&2
     if ! wmake > log.wmake 2>&1; then
         echo "Errors compiling $lib test driver, see $PWD/log.wmake for more information"
         exit 1
     else
-        echo "Test driver for $lib has been compiled."
+        echo "Test driver for $lib has been compiled." >&2
     fi
     cd - > /dev/null
 done
@@ -167,8 +180,9 @@ done
 cd "$root"
 
 # get setup to run tests
-cases=$(find cases/ -maxdepth 1 -mindepth 1 -type d)
-if [ -z "$cases" ]; then
+#cases=$(find cases/ -maxdepth 1 -mindepth 1 -type d)
+mapfile -t cases_array < <(find cases/ -maxdepth 1 -mindepth 1 -type d)
+if [ ${#cases_array[@]} -eq 0 ]; then
     echo "No cases found to run tests"
     exit 1
 fi
@@ -177,7 +191,8 @@ mkdir -p "$root"/reports
 # run the tests, but do not exit until attempting everything
 set +e
 err=0
-for ofCase in $cases; do
+for ((k = 0; k < ${#cases_array[@]}; k++)); do
+    ofCase="${cases_array[k]}"
     caseName=$(basename "$ofCase")
     casePath=$caseRun/$caseName
     cp -r "$ofCase" "$caseRun"
@@ -187,17 +202,17 @@ for ofCase in $cases; do
     case $doParallel in
         (true)   parallelTests "$err" "$caseName" "$casePath" "$libs"  "$@";;
     esac
+    # separator in case json reporter is used
+    for element in "${args_array[@]}"; do
+        if [ "$element" == "json" ]; then
+            if ((k != ${#cases_array[@]} - 1)); then
+                printf ","
+            fi
+        fi
+    done
     rm -rf "$casePath"
 done
 
-case $doReport in
-    (true) for lib in $libs; do
-        consReport="${root}/reports/$(basename "$lib").xml"
-        echo '</AllTestsForFile>' >> "$consReport"
-        echo "Done writing consolidated XML report to $consReport"
-    done;;
-esac
-    
 # Cleanup
 for dummy in $dummyLibChecks; do
     if [ -f "${FOAM_USER_LIBBIN}/lib${dummy}.so" ] && 
@@ -205,5 +220,6 @@ for dummy in $dummyLibChecks; do
         rm -rf "${FOAM_USER_LIBBIN}/lib${dummy}.so"
     fi
 done
+rm -rf "$caseRun"
 
 exit $err
