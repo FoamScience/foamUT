@@ -141,11 +141,6 @@ parallelTests(){
             -n "$(basename "$lib")" $report \
             --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
         lerr=$?
-        case $doReport in
-            (true) if [ $lerr -ne 0  ];  then
-                cat "${logdir}"/*/rank.*/stdout
-            fi
-        esac
         # separator in case json reporter is used
         for element in "${params[@]}"; do
             if [ "$element" == "json" ]; then
