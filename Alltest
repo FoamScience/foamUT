@@ -106,10 +106,15 @@ parallelTests(){
             ;;
         esac
     done
-    decomposePar -force -case "${3}" > "${3}/log.decomposePar"
+    nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
+    if ! command -v my_command &> /dev/null; then
+        echo "decomposePar not found, assuming case already decoposed..."
+        for i in $(seq 0 $(($nProcs - 1))); do mkdir -p "{3}/processor$i"; done
+    else
+        decomposePar -force -case "${3}" > "${3}/log.decomposePar"
+    fi
     err=$((err + $?))
     # run the case in parallel mode
-    nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
     report=""
     case $doReport in
         (true) report="-s -r json -d yes";;
