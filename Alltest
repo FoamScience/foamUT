@@ -106,9 +106,13 @@ parallelTests(){
             ;;
         esac
     done
+    if [ -e "${3}/system/decomposeParDict" ]; then
+        rm -rf "${3}/processor*"
+        echo "decomposeParDict not found, not running parallel tests on this case..." >&2
+    fi
     nProcs=$(grep -oP "numberOfSubdomains\s+\K\d+" "${3}"/system/decomposeParDict)
     if ! command -v my_command &> /dev/null; then
-        echo "decomposePar not found, assuming case already decoposed..."
+        echo "decomposePar not found, assuming case already decoposed..." >&2
         for i in $(seq 0 $(($nProcs - 1))); do mkdir -p "{3}/processor$i"; done
     else
         decomposePar -force -case "${3}" > "${3}/log.decomposePar"
