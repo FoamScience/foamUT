@@ -8,7 +8,19 @@ defaults:
 
 # Controls when the workflow will run
 on:
-  push
+  push:
+    branches:
+      - master
+      - ci
+      - 'bugfix*'
+      - 'releases/**'
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Tmate debugging session'
+        required: false
+        default: false
 
 jobs:
   build:
@@ -23,6 +35,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+          detached: true
 
       - name: Compile and Test
         run: |
