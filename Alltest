@@ -194,7 +194,7 @@ for ((k = 0; k < ${#cases_array[@]}; k++)); do
     ofCase="${cases_array[k]}"
     caseName=$(basename "$ofCase")
     casePath=$caseRun/$caseName
-    cp -r "$ofCase" "$caseRun"
+    cp -rL "$ofCase" "$casePath"
     case $doSerial in
         (true)    serialTests "$err" "$caseName" "$casePath" "$libs"  "$@";;
     esac
