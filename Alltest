@@ -10,6 +10,17 @@ if [ -z "${FOAM_LIBBIN}" ]; then
     exit 1
 fi
 
+# If tests folder is supplied through an env. var.
+# do the symlinking
+if [ -n "${FOAM_FOAMUT_TESTS}" ]; then
+    find "${FOAM_FOAMUT_TESTS}" -type d -name "Make" | while read -r make_dir; do
+        parent_dir=$(basename "$(dirname "$make_dir")")
+        target_dir="$PWD/tests/$parent_dir"
+        ln -f -s "$(dirname "$make_dir")" "$target_dir"
+        echo "picked up $parent_dir tests"
+    done
+fi
+
 doSerial=true
 doParallel=true
 doReport=false
@@ -94,9 +105,9 @@ serialTests() {
 }
 
 parallelTests(){
-    if ! test -f "${3}/system/decomposeParDict" ; then
-        echo "No decomposeParDict found, not running parallel tests..." >&2
-        return 0
+    if [ -e "${3}/system/decomposeParDict" ]; then
+        rm -rf "${3}/processor*"
+        echo "decomposeParDict not found, not running parallel tests on this case..." >&2
     fi
     local fargs=("$@")
     local params=()
@@ -130,11 +141,11 @@ parallelTests(){
                 direct="> /dev/null"
                 echo "Parallel Reports (${nProcs}): ${logdir}" >&2
         esac
-        eval timeout "$timeOut" mpirun "$logparams" -np "$nProcs" \
+        timeout "$timeOut" mpirun "$logparams" -np "$nProcs" \
             "$root"/"$lib"/testDriver \
             --allow-running-no-tests \
             -n "$(basename "$lib")" $report \
-            --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
+            --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" "$direct"
         lerr=$?
         # separator in case json reporter is used
         for element in "${params[@]}"; do
