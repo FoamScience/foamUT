@@ -105,9 +105,10 @@ serialTests() {
 }
 
 parallelTests(){
-    if [ -e "${3}/system/decomposeParDict" ]; then
+    if ! test -f "${3}/system/decomposeParDict" ; then
         rm -rf "${3}/processor*"
         echo "decomposeParDict not found, not running parallel tests on this case..." >&2
+        return 0
     fi
     local fargs=("$@")
     local params=()
@@ -141,12 +142,12 @@ parallelTests(){
                 direct="> /dev/null"
                 echo "Parallel Reports (${nProcs}): ${logdir}" >&2
         esac
-        timeout "$timeOut" mpirun "$logparams" -np "$nProcs" \
+        timeout "$timeOut" mpirun $logparams -np "$nProcs" \
             "$root"/"$lib"/testDriver \
             --allow-running-no-tests \
             -n "$(basename "$lib")" $report \
-            --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" "$direct"
-        lerr=$?
+            --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+        set +x
         # separator in case json reporter is used
         for element in "${params[@]}"; do
             if [ "$element" == "json" ]; then
