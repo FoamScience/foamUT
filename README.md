@@ -19,22 +19,27 @@ help of this testing framework.
 
 ## How to use this repo
 
-The [Alltest](Alltest) script loops through [OpenFOAM cases](cases) and runs corresponding test cases
-(for directories it finds under [tests](tests)) - both in serial and in parallel.
+The [Alltest](Alltest) script loops through the [OpenFOAM cases](cases) and runs corresponding
+test cases (for directories it finds under [tests](tests) that contain a `Make` folder)
+- both in serial and in parallel.
 
 You can use this to your advantage as you don't need to include this repo into your code base:
 
 1. In your library's repo, write tests the way you like;
-    ship them with their own `Make` directory to compile the test driver (see [example tests](tests/exampleTests))
-2. In your CI workflows, checkout this repository and symlink your tests somewhere under `tests`
-    ```bash
-    ln -s /path/to/your/tests tests/myLibTests
-    ```
-3. Do the same for your OpenFOAM cases if you have any (only a simple cavity case is provided by default).
-    Put these under `cases`.
-4. Run `./Alltest` to compile and run your tests on your cases.
-5. If you run `./Alltest.report` instead, HTML reports will be generated for your tests
-    inside [reports/tests](reports/tests) directory.
+   ship them with their own `Make` directory to compile the test driver (see [example tests](tests/exampleTests))
+1. Set the `FOAM_FOAMUT` environment variable to your local clone of `foamUT` repository
+1. In your CI workflows, checkout this repository, set `FOAM_FOAMUT` to its path, and either:
+    - symlink your tests somewhere under `tests`
+      ```bash
+      ln -s /path/to/your/tests/myLibTests tests/myLibTests
+      ```
+    - or set `FOAM_FOAMUT_TESTS` to your `tests` folder
+      ```bash
+      export FOAM_FOAMUT_TESTS=/path/to/your/tests
+      ```
+1. Do the same for your OpenFOAM cases if you have any (only a simple cavity case is provided by default).
+   Put these under `cases`.
+1. Run `./Alltest` to compile and run your tests on your cases.
 
 ## Documentation
 
