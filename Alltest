@@ -191,8 +191,7 @@ done
 cd "$root"
 
 # get setup to run tests
-#cases=$(find cases/ -maxdepth 1 -mindepth 1 -type d)
-mapfile -t cases_array < <(find cases/ -maxdepth 1 -mindepth 1 -type d)
+mapfile -t cases_array < <(find -L cases/ -maxdepth 1 -mindepth 1 -type d)
 if [ ${#cases_array[@]} -eq 0 ]; then
     echo "No cases found to run tests"
     exit 1
