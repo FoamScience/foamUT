@@ -178,6 +178,7 @@ fi
 for lib in $libs; do
     cd "$lib"
     echo "Compiling $lib test driver..." >&2
+    wmakeLnInclude . # Just in case the tested libs are header only
     if ! wmake > log.wmake 2>&1; then
         echo "Errors compiling $lib test driver, see $PWD/log.wmake for more information"
         exit 1
