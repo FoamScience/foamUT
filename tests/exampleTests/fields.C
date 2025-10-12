@@ -11,7 +11,6 @@ extern Time* timePtr;
 extern argList* argsPtr;
 
 SCENARIO("Check field initialization methods", "[cavity][serial][parallel]") {
-    Foam::FatalError.dontThrowExceptions();
     Time& runTime = *timePtr;
     argList& args = *argsPtr;
     #include "createMesh.H"
@@ -29,7 +28,8 @@ SCENARIO("Check field initialization methods", "[cavity][serial][parallel]") {
                 runTime.timeName(),
                 mesh,
                 IOobject::NO_READ,
-                IOobject::NO_WRITE
+                IOobject::NO_WRITE,
+                false
             ),
             mesh,
             zero
