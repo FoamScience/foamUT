@@ -1,0 +1,77 @@
+name: foamut
+help: Unit/integration testing framework for OpenFOAM
+version: 2.0.0
+
+flags:
+  - long: --parallel
+    help: Run parallel tests only (default is serial only, incompatible with --standalone)
+
+  - long: --report
+    help: Generate JSON test reports in reports/ directory
+
+  - long: --test-driver
+    arg: source_path
+    help: Path to custom testDriver.C source file (overrides default)
+
+  - long: --standalone
+    help: Run tests without OpenFOAM cases (tests not tagged by case names, serial or mode-agnostic)
+
+  - long: --test-prefix
+    arg: command
+    help: |
+      Prefix command for test execution (automatically disables timeout)
+      Serial: <prefix> testDriver ...
+      Parallel: mpirun -np N <prefix> testDriver ...
+      Examples: "gdb --args", "valgrind", "hpctoolkit"
+
+  - long: --force-timeout
+    help: Keep timeout wrapper even when using --test-prefix
+
+environment_variables:
+  - name: FOAM_LIBBIN
+    help: OpenFOAM library directory (required, set by sourcing OpenFOAM)
+
+  - name: FOAM_FOAMUT_TESTS
+    help: Path to external tests directory (will be symlinked under tests/)
+
+  - name: CATCH_TIMEOUT
+    help: Test timeout in seconds (default 60)
+
+  - name: FOAM_FOAMUT
+    help: Path to foamUT repository root (set automatically)
+
+catch_all:
+  label: catch2_args
+  help: |-
+    Arguments passed to Catch2 test framework.
+
+    Common Catch2 Options:
+      --list-tests                    List all tests
+      --list-tags                     List all tags
+      -h, --help                      Show Catch2 help
+      -s, --success                   Show successful tests
+      -b, --break                     Break into debugger on failure
+      -d, --durations <yes|no>        Show test durations
+      -#, --filenames-as-tags         Add filename as tag
+      -r, --reporter <name>           Use specific reporter (console, xml, junit, etc.)
+      --order <decl|lex|rand>         Test execution order
+
+    Tag Filters:
+      "[tag1]"                        Run tests with tag1
+      "[tag1][tag2]"                  Run tests with both tags
+      "[tag1],[tag2]"                 Run tests with either tag
+      "~[tag1]"                       Exclude tests with tag1
+
+    Note: testDriver uses --- to separate Catch2 from OpenFOAM args internally
+
+examples:
+  - foamut --help                                        # Show this help (foamUT options + Catch2 reference)
+  - foamut                                               # Run serial tests only (default)
+  - foamut --parallel                                    # Run parallel tests only
+  - foamut --parallel --report                           # Run parallel tests with JSON reports
+  - foamut --standalone                                  # Run tests NOT tagged with case names
+  - foamut --list-tests                                  # List all available tests (Catch2)
+  - foamut "[serial]"                                    # Run specific test tags (Catch2)
+  - foamut -s                                            # Show successful tests (Catch2)
+  - foamut --test-prefix "gdb --args"                    # Debug serial tests
+  - foamut --test-driver /path/to/custom/testDriver.C   # Use custom test driver
