@@ -2,5 +2,6 @@ $(FOAM_FOAMUT)/tests/testDriver.C
 
 time.C
 fields.C
+noCase.C
 
 EXE = testDriver

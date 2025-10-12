@@ -75,13 +75,29 @@ int main(int argc, char *argv[])
         Warning().stdStream().setstate(std::ios_base::failbit);
     }
 
-    //argList::noBanner();
-    #include "setRootCase.H"
-    #include "createTime.H"
-    argsPtr = &args;
-    timePtr = &runTime;
+    // Only create OpenFOAM Time object if case arguments are provided
+    // (standalone mode doesn't provide --- separator or foam arguments)
+    int ret = 0;
+    if (foamArgc > 1)
+    {
+        #include "setRootCase.H"
+        #include "createTime.H"
+        argsPtr = &args;
+        timePtr = &runTime;
 
-    auto ret = session.run();
+        // Run tests with valid args and runTime pointers
+        ret = session.run();
+    }
+    else
+    {
+        // Standalone mode: no OpenFOAM case
+        argsPtr = nullptr;
+        timePtr = nullptr;
+
+        // Run tests without OpenFOAM objects
+        ret = session.run();
+    }
+
     if (ret != 0)  abort();
     return 0;
 }
