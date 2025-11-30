@@ -28,6 +28,12 @@ if [ "${args[--standalone]}" = "1" ] && [ "${args[--parallel]}" = "1" ]; then
     exit 1
 fi
 
+# Validate --case is not used with --standalone
+if [ -n "${args[--case]}" ] && [ "${args[--standalone]}" = "1" ]; then
+    echo "Error: --case is not compatible with --standalone" >&2
+    exit 1
+fi
+
 # Load helper functions
 source "$root/src/lib/setup_test_symlinks.sh"
 source "$root/src/lib/create_dummy_libs.sh"
@@ -112,6 +118,25 @@ else
     if [ ${#cases_array[@]} -eq 0 ]; then
         echo "No cases found to run tests"
         exit 1
+    fi
+
+    # Filter to specific case if --case is provided
+    if [ -n "${args[--case]}" ]; then
+        selected_case="${args[--case]}"
+        found_case=""
+        for case_dir in "${cases_array[@]}"; do
+            if [ "$(basename "$case_dir")" = "$selected_case" ]; then
+                found_case="$case_dir"
+                break
+            fi
+        done
+        if [ -z "$found_case" ]; then
+            echo "Error: Case '$selected_case' not found in cases/" >&2
+            echo "Available cases: ${case_names[*]}" >&2
+            exit 1
+        fi
+        cases_array=("$found_case")
+        echo "Running tests on case: $selected_case" >&2
     fi
 fi
 

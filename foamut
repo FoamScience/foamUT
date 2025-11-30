@@ -42,6 +42,12 @@ root_command() {
       exit 1
   fi
 
+  # Validate --case is not used with --standalone
+  if [ -n "${args[--case]}" ] && [ "${args[--standalone]}" = "1" ]; then
+      echo "Error: --case is not compatible with --standalone" >&2
+      exit 1
+  fi
+
   # Load helper functions
   source "$root/src/lib/setup_test_symlinks.sh"
   source "$root/src/lib/create_dummy_libs.sh"
@@ -126,6 +132,25 @@ root_command() {
       if [ ${#cases_array[@]} -eq 0 ]; then
           echo "No cases found to run tests"
           exit 1
+      fi
+
+      # Filter to specific case if --case is provided
+      if [ -n "${args[--case]}" ]; then
+          selected_case="${args[--case]}"
+          found_case=""
+          for case_dir in "${cases_array[@]}"; do
+              if [ "$(basename "$case_dir")" = "$selected_case" ]; then
+                  found_case="$case_dir"
+                  break
+              fi
+          done
+          if [ -z "$found_case" ]; then
+              echo "Error: Case '$selected_case' not found in cases/" >&2
+              echo "Available cases: ${case_names[*]}" >&2
+              exit 1
+          fi
+          cases_array=("$found_case")
+          echo "Running tests on case: $selected_case" >&2
       fi
   fi
 
@@ -227,6 +252,11 @@ foamut_usage() {
     printf "    Keep timeout wrapper even when using --test-prefix\n"
     echo
 
+    # :flag.usage
+    printf "  %s\n" "--case CASE_NAME"
+    printf "    Run tests on a specific case only (by name, not path)\n"
+    echo
+
     # :command.usage_fixed_flags
     printf "  %s\n" "--help, -h"
     printf "    Show this help\n"
@@ -272,6 +302,7 @@ foamut_usage() {
     printf "  foamut --parallel\n"
     printf "  foamut --parallel --report\n"
     printf "  foamut --standalone\n"
+    printf "  foamut --case cavity\n"
     printf "  foamut --list-tests\n"
     printf "  foamut \"[serial]\"\n"
     printf "  foamut -s\n"
@@ -511,7 +542,7 @@ run_parallel_tests() {
             --parallel|--report|--standalone|--force-timeout)
                 # These flags don't take arguments
                 ;;
-            --test-driver|--test-prefix)
+            --test-driver|--test-prefix|--case)
                 # These flags take an argument, skip the next one too
                 skip_next=true
                 ;;
@@ -568,18 +599,18 @@ run_parallel_tests() {
                 timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
-                    --rng-seed time "$tag_filter" ${params[@]} --- -parallel $direct
+                    --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
             else
                 if [ "$force_timeout" = "1" ]; then
                     timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "$tag_filter" ${params[@]} --- -parallel $direct
+                        --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
                 else
                     mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "$tag_filter" ${params[@]} --- -parallel $direct
+                        --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
                 fi
             fi
         else
@@ -588,23 +619,25 @@ run_parallel_tests() {
                 timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
-                    --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+                    --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
             else
                 if [ "$force_timeout" = "1" ]; then
                     timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+                        --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
                 else
                     mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+                        --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
                 fi
             fi
         fi
 
-        set +x
+        locErr=$?
+        err=$((err + locErr))
+
         # separator in case json reporter is used
         for element in "${params[@]}"; do
             if [ "$element" == "json" ]; then
@@ -613,7 +646,6 @@ run_parallel_tests() {
                 fi
             fi
         done
-        err=$((err + lerr))
     done
 }
 
@@ -641,7 +673,7 @@ run_serial_tests() {
             --parallel|--report|--standalone|--force-timeout)
                 # These flags don't take arguments
                 ;;
-            --test-driver|--test-prefix)
+            --test-driver|--test-prefix|--case)
                 # These flags take an argument, skip the next one too
                 skip_next=true
                 ;;
@@ -842,6 +874,20 @@ parse_requirements() {
         # :flag.case_no_arg
         args['--force-timeout']=1
         shift
+        ;;
+
+      # :flag.case
+      --case)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--case']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--case requires an argument: --case CASE_NAME" >&2
+          exit 1
+        fi
         ;;
 
       --)

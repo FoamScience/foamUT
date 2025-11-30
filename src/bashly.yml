@@ -27,6 +27,10 @@ flags:
   - long: --force-timeout
     help: Keep timeout wrapper even when using --test-prefix
 
+  - long: --case
+    arg: case_name
+    help: Run tests on a specific case only (by name, not path)
+
 environment_variables:
   - name: FOAM_LIBBIN
     help: OpenFOAM library directory (required, set by sourcing OpenFOAM)
@@ -70,6 +74,7 @@ examples:
   - foamut --parallel                                    # Run parallel tests only
   - foamut --parallel --report                           # Run parallel tests with JSON reports
   - foamut --standalone                                  # Run tests NOT tagged with case names
+  - foamut --case cavity                                 # Run tests on the cavity case only
   - foamut --list-tests                                  # List all available tests (Catch2)
   - foamut "[serial]"                                    # Run specific test tags (Catch2)
   - foamut -s                                            # Show successful tests (Catch2)

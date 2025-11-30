@@ -21,7 +21,7 @@ run_serial_tests() {
             --parallel|--report|--standalone|--force-timeout)
                 # These flags don't take arguments
                 ;;
-            --test-driver|--test-prefix)
+            --test-driver|--test-prefix|--case)
                 # These flags take an argument, skip the next one too
                 skip_next=true
                 ;;

@@ -31,7 +31,7 @@ run_parallel_tests() {
             --parallel|--report|--standalone|--force-timeout)
                 # These flags don't take arguments
                 ;;
-            --test-driver|--test-prefix)
+            --test-driver|--test-prefix|--case)
                 # These flags take an argument, skip the next one too
                 skip_next=true
                 ;;
@@ -88,18 +88,18 @@ run_parallel_tests() {
                 timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
-                    --rng-seed time "$tag_filter" ${params[@]} --- -parallel $direct
+                    --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
             else
                 if [ "$force_timeout" = "1" ]; then
                     timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "$tag_filter" ${params[@]} --- -parallel $direct
+                        --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
                 else
                     mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "$tag_filter" ${params[@]} --- -parallel $direct
+                        --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
                 fi
             fi
         else
@@ -108,23 +108,25 @@ run_parallel_tests() {
                 timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
-                    --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+                    --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
             else
                 if [ "$force_timeout" = "1" ]; then
                     timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+                        --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
                 else
                     mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
-                        --rng-seed time "[parallel][${2}]" ${params[@]} --- -parallel -case "${3}" $direct
+                        --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
                 fi
             fi
         fi
 
-        set +x
+        locErr=$?
+        err=$((err + locErr))
+
         # separator in case json reporter is used
         for element in "${params[@]}"; do
             if [ "$element" == "json" ]; then
@@ -133,6 +135,5 @@ run_parallel_tests() {
                 fi
             fi
         done
-        err=$((err + lerr))
     done
 }
