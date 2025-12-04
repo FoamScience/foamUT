@@ -47,6 +47,6 @@ jobs:
           source /opt/foam-extend-5.0/etc/bashrc
           sudo chown openfoam: /home/openfoam
           mkdir -p $FOAM_USER_LIBBIN
-          sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
           export FOAM_FOAMUT=$PWD
-          ./Alltest
+          ./foamut
+          ./foamut --parallel --mpirun-options oversubscribe

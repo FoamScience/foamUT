@@ -34,6 +34,6 @@ jobs:
         run: |
           source /opt/openfoam9/etc/bashrc
           mkdir -p $FOAM_USER_LIBBIN
-          sed -i 's/mpirun/mpirun --oversubscribe/g' Alltest
           export FOAM_FOAMUT=$PWD
-          ./Alltest
+          ./foamut
+          ./foamut --parallel --mpirun-options oversubscribe
