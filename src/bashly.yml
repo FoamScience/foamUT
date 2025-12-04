@@ -6,6 +6,14 @@ flags:
   - long: --parallel
     help: Run parallel tests only (default is serial only, incompatible with --standalone)
 
+  - long: --mpirun-options
+    arg: options
+    help: |
+      Comma-separated mpirun options (requires --parallel)
+      Each option will be prefixed with -- when passed to mpirun
+      Example: --mpirun-options oversubscribe,use-hwthread-cpus
+      Results in: mpirun --oversubscribe --use-hwthread-cpus ...
+
   - long: --report
     help: Generate JSON test reports in reports/ directory
 
@@ -72,6 +80,7 @@ examples:
   - foamut --help                                        # Show this help (foamUT options + Catch2 reference)
   - foamut                                               # Run serial tests only (default)
   - foamut --parallel                                    # Run parallel tests only
+  - foamut --parallel --mpirun-options oversubscribe     # Run with mpirun --oversubscribe
   - foamut --parallel --report                           # Run parallel tests with JSON reports
   - foamut --standalone                                  # Run tests NOT tagged with case names
   - foamut --case cavity                                 # Run tests on the cavity case only

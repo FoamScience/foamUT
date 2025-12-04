@@ -31,7 +31,7 @@ run_parallel_tests() {
             --parallel|--report|--standalone|--force-timeout)
                 # These flags don't take arguments
                 ;;
-            --test-driver|--test-prefix|--case)
+            --test-driver|--test-prefix|--case|--mpirun-options)
                 # These flags take an argument, skip the next one too
                 skip_next=true
                 ;;
@@ -43,6 +43,15 @@ run_parallel_tests() {
 
     local test_prefix="${args[--test-prefix]}"
     local force_timeout="${args[--force-timeout]}"
+
+    # Parse mpirun options: convert comma-separated list to --prefixed options
+    local mpirun_opts=""
+    if [ -n "${args[--mpirun-options]}" ]; then
+        IFS=',' read -ra mpi_opt_array <<< "${args[--mpirun-options]}"
+        for opt in "${mpi_opt_array[@]}"; do
+            mpirun_opts="$mpirun_opts --$opt"
+        done
+    fi
 
     # Decompose case if not in standalone mode
     if [ "$standalone_mode" != "true" ]; then
@@ -85,18 +94,18 @@ run_parallel_tests() {
             # Build and execute command with or without timeout and prefix
             # Prefix comes AFTER mpirun in parallel mode
             if [ -z "$test_prefix" ]; then
-                timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
+                timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
                     --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
             else
                 if [ "$force_timeout" = "1" ]; then
-                    timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
                 else
-                    mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
@@ -105,18 +114,18 @@ run_parallel_tests() {
         else
             # Normal mode: with case argument and -parallel flag
             if [ -z "$test_prefix" ]; then
-                timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
+                timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
                     --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
             else
                 if [ "$force_timeout" = "1" ]; then
-                    timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
                 else
-                    mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct

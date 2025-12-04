@@ -228,6 +228,11 @@ foamut_usage() {
     echo
 
     # :flag.usage
+    printf "  %s\n" "--mpirun-options OPTIONS"
+    printf "    Comma-separated mpirun options (requires --parallel)\n    Each option will be prefixed with -- when passed to mpirun\n    Example: --mpirun-options oversubscribe,use-hwthread-cpus\n    Results in: mpirun --oversubscribe --use-hwthread-cpus ...\n"
+    echo
+
+    # :flag.usage
     printf "  %s\n" "--report"
     printf "    Generate JSON test reports in reports/ directory\n"
     echo
@@ -300,6 +305,7 @@ foamut_usage() {
     printf "  foamut --help\n"
     printf "  foamut\n"
     printf "  foamut --parallel\n"
+    printf "  foamut --parallel --mpirun-options oversubscribe\n"
     printf "  foamut --parallel --report\n"
     printf "  foamut --standalone\n"
     printf "  foamut --case cavity\n"
@@ -542,7 +548,7 @@ run_parallel_tests() {
             --parallel|--report|--standalone|--force-timeout)
                 # These flags don't take arguments
                 ;;
-            --test-driver|--test-prefix|--case)
+            --test-driver|--test-prefix|--case|--mpirun-options)
                 # These flags take an argument, skip the next one too
                 skip_next=true
                 ;;
@@ -554,6 +560,15 @@ run_parallel_tests() {
 
     local test_prefix="${args[--test-prefix]}"
     local force_timeout="${args[--force-timeout]}"
+
+    # Parse mpirun options: convert comma-separated list to --prefixed options
+    local mpirun_opts=""
+    if [ -n "${args[--mpirun-options]}" ]; then
+        IFS=',' read -ra mpi_opt_array <<< "${args[--mpirun-options]}"
+        for opt in "${mpi_opt_array[@]}"; do
+            mpirun_opts="$mpirun_opts --$opt"
+        done
+    fi
 
     # Decompose case if not in standalone mode
     if [ "$standalone_mode" != "true" ]; then
@@ -596,18 +611,18 @@ run_parallel_tests() {
             # Build and execute command with or without timeout and prefix
             # Prefix comes AFTER mpirun in parallel mode
             if [ -z "$test_prefix" ]; then
-                timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
+                timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
                     --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
             else
                 if [ "$force_timeout" = "1" ]; then
-                    timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
                 else
-                    mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "$tag_filter" "${params[@]}" --- -parallel $direct
@@ -616,18 +631,18 @@ run_parallel_tests() {
         else
             # Normal mode: with case argument and -parallel flag
             if [ -z "$test_prefix" ]; then
-                timeout "$timeOut" mpirun $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
+                timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" "$root"/"$lib"/testDriver \
                     --allow-running-no-tests \
                     -n "$(basename "$lib")" $report \
                     --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
             else
                 if [ "$force_timeout" = "1" ]; then
-                    timeout "$timeOut" mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    timeout "$timeOut" mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
                 else
-                    mpirun $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
+                    mpirun$mpirun_opts $logparams -np "$nProcs" $test_prefix "$root"/"$lib"/testDriver \
                         --allow-running-no-tests \
                         -n "$(basename "$lib")" $report \
                         --rng-seed time "[parallel][${2}]" "${params[@]}" --- -parallel -case "${3}" $direct
@@ -822,6 +837,20 @@ parse_requirements() {
         # :flag.case_no_arg
         args['--parallel']=1
         shift
+        ;;
+
+      # :flag.case
+      --mpirun-options)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--mpirun-options']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--mpirun-options requires an argument: --mpirun-options OPTIONS" >&2
+          exit 1
+        fi
         ;;
 
       # :flag.case
